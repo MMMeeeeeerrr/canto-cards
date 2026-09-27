@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f7f4ee">
+<title>粵字 CantoCards</title>
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+html,body{margin:0;min-height:100%;background:#f5f2eb;color:#1d2524;font-family:-apple-system,BlinkMacSystemFont,"PingFang HK","PingFang TC","Noto Sans TC",sans-serif}body{display:grid;place-items:center}.box{text-align:center;padding:32px}.logo{width:68px;height:68px;margin:auto;border-radius:22px;background:#1d2524;color:white;display:grid;place-items:center;font-size:30px;font-weight:800}.title{font-size:22px;font-weight:800;margin-top:18px}.sub{margin-top:8px;color:#7b817d;font-size:14px}.bar{width:min(300px,75vw);height:8px;background:#e5e0d6;border-radius:99px;overflow:hidden;margin:20px auto 0}.fill{height:100%;width:8%;background:#1f6f5f;border-radius:99px;transition:width .2s}.err{color:#a34b42;margin-top:14px;font-size:13px;display:none}
+</style>
+</head>
+<body>
+<div class="box"><div class="logo">粵</div><div class="title">粵字 CantoCards</div><div class="sub" id="status">正在载入离线字音库…</div><div class="bar"><div class="fill" id="fill"></div></div><div class="err" id="err"></div></div>
+<script>
+(async()=>{const files=['app-01.txt','app-02.txt','app-03.txt','app-04.txt','app-05.txt','app-06.txt','app-07.txt'];try{let parts=[];for(let i=0;i<files.length;i++){const r=await fetch(files[i]);if(!r.ok)throw new Error('载入失败：'+files[i]);parts.push(await r.text());document.getElementById('fill').style.width=((i+1)/files.length*82+8)+'%'}const b64=parts.join('').trim();const bin=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));if(!('DecompressionStream'in window))throw new Error('当前浏览器版本过旧，请升级 Safari / Chrome / Edge 后重试。');const stream=new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'));const html=await new Response(stream).text();document.getElementById('fill').style.width='100%';document.open();document.write(html);document.close()}catch(e){document.getElementById('status').textContent='载入失败';const er=document.getElementById('err');er.style.display='block';er.textContent=e.message+'。请检查网络后刷新一次；成功打开后即可离线使用。'}})();
+</script>
+</body>
+</html>
