@@ -1,0 +1,15 @@
+{
+  "release": "04mobile2",
+  "architecture": {
+    "service_worker_install": "core-only",
+    "core_assets": 9,
+    "optional_assets": 33,
+    "optional_cache": "resumable sequential low-contention",
+    "session_prefetch": "enabled",
+    "offline_status_rows": [
+      "app_mode",
+      "offline_core",
+      "full_learning_data"
+    ]
+  }
+}

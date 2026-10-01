@@ -11,10 +11,10 @@
   <meta name="application-name" content="CantoCards">
   <meta name="description" content="離線粵語漢字讀音學習器：漢字、粵拼、例詞與語境複習。">
   <title>CantoCards</title>
-  <link rel="manifest" href="./manifest.webmanifest?v=04mobile1">
-  <link rel="apple-touch-icon" href="./icon-180.png?v=04mobile1">
-  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png?v=04mobile1">
-  <link rel="stylesheet" href="./styles.css?v=04mobile1">
+  <link rel="manifest" href="./manifest.webmanifest?v=04mobile2">
+  <link rel="apple-touch-icon" href="./icon-180.png?v=04mobile2">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png?v=04mobile2">
+  <link rel="stylesheet" href="./styles.css?v=04mobile2">
 </head>
 <body>
   <div id="loadingScreen" class="loading-screen">
@@ -180,8 +180,10 @@
 
           <div class="panel setting-card">
             <h3>安裝與離線</h3>
-            <div class="voice-status"><span id="pwaDot"></span><div><b id="pwaTitle">正在檢測…</b><small id="pwaDetail">網站版可直接使用；安裝與離線功能需要支援 PWA 的安全連線。</small></div></div>
-            <div class="setting-actions"><button class="line-btn is-hidden" id="installAppBtn">安裝到裝置</button><button class="line-btn" id="checkUpdateBtn">檢查更新</button><button class="primary-btn is-hidden" id="applyUpdateBtn">重新載入更新</button></div>
+            <div class="voice-status"><span id="pwaDot"></span><div><b id="pwaTitle">正在檢測 App 狀態…</b><small id="pwaDetail">網站版可直接使用；支援時可安裝到裝置。</small></div></div>
+            <div class="voice-status"><span id="offlineCoreDot"></span><div><b id="offlineCoreTitle">正在檢測離線核心…</b><small id="offlineCoreDetail">離線核心就緒後，即使沒有網路也能啟動 CantoCards。</small></div></div>
+            <div class="voice-status"><span id="offlineDataDot"></span><div><b id="offlineDataTitle">正在檢測完整學習資料…</b><small id="offlineDataDetail">例詞、例句與搜尋索引會在背景逐步儲存到本機。</small></div></div>
+            <div class="setting-actions"><button class="line-btn is-hidden" id="installAppBtn">安裝到裝置</button><button class="line-btn is-hidden" id="offlineDataBtn">繼續準備完整離線資料</button><button class="line-btn" id="checkUpdateBtn">檢查更新</button><button class="primary-btn is-hidden" id="applyUpdateBtn">重新載入更新</button></div>
           </div>
 
           <div class="panel setting-card">
@@ -214,6 +216,6 @@
     </div>
   </div>
 
-  <script src="./app.js?v=04mobile1" defer></script>
+  <script src="./app.js?v=04mobile2" defer></script>
 </body>
 </html>
