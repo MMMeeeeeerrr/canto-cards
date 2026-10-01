@@ -1,18 +1,22 @@
 "use strict";
 
+const RELEASE = "04mobile1";
 const DATA_PATHS = {
-  cards: "./data/cards.json?v=04pwa3",
-  words: "./data/words.json?v=04pwa3",
-  cardWords: "./data/card_words.json?v=04pwa3",
-  sentences: "./data/sentences.json?v=04pwa3"
+  cards: `./data/cards.json?v=${RELEASE}`,
+  startup: `./data/startup.json?v=${RELEASE}`,
+  search: `./data/search_index.json?v=${RELEASE}`,
+  exampleShard: n => `./data/examples/${n.toString(16).padStart(2,"0")}.json?v=${RELEASE}`
 };
 const STORE_KEY = "cantoCards.progress.v1";
 const SETTINGS_KEY = "cantoCards.settings.v1";
 const DAY = 86400000;
+const EXAMPLE_SHARD_COUNT = 32;
 
 let CARDS = [], CARD_MAP = new Map(), CHAR_MAP = new Map();
-let WORDS = new Map(), CARD_WORDS = {}, SENTENCES = new Map();
+let STARTUP = {decks:{starter:[],core:[],practical:[]},previews:{}};
 let DECKS = {starter:[], core:[], practical:[], all:[]};
+let SEARCH_INDEX = null, searchIndexPromise = null, searchRequestSeq = 0;
+const EXAMPLE_SHARDS = new Map(), EXAMPLE_PROMISES = new Map();
 let progress = {}, settings = {};
 let session = [], cursor = 0, current = null, revealed = false, noteEditingId = null;
 let cantoneseVoice = null;
@@ -25,22 +29,31 @@ const sample = (a,n) => shuffle(a).slice(0,n);
 function loadJSON(key, fallback){try{return JSON.parse(localStorage.getItem(key)) ?? fallback}catch{return fallback}}
 function saveJSON(key,val){localStorage.setItem(key,JSON.stringify(val))}
 function toast(msg){const t=$("toast");t.textContent=msg;t.classList.add("show");clearTimeout(t._tm);t._tm=setTimeout(()=>t.classList.remove("show"),1900)}
+async function fetchJSON(url){const r=await fetch(url);if(!r.ok)throw new Error(`${url} · HTTP ${r.status}`);return r.json()}
 
-async function fetchJSON(url){const r=await fetch(url,{cache:"no-cache"});if(!r.ok)throw new Error(`${url} · HTTP ${r.status}`);return r.json()}
+function buildDecks(){
+  const hydrate = ids => (ids||[]).map(id=>CARD_MAP.get(id)).filter(Boolean);
+  DECKS = {
+    starter: hydrate(STARTUP.decks.starter),
+    core: hydrate(STARTUP.decks.core),
+    practical: hydrate(STARTUP.decks.practical),
+    all: CARDS
+  };
+}
 
 async function init(){
   try{
-    $("loadingText").textContent="載入字音、例詞與例句…";
-    const [cardsObj, wordsObj, cardWordsObj, sentencesObj] = await Promise.all([
-      fetchJSON(DATA_PATHS.cards), fetchJSON(DATA_PATHS.words), fetchJSON(DATA_PATHS.cardWords), fetchJSON(DATA_PATHS.sentences)
+    $("loadingText").textContent="載入核心字表…";
+    // Cold start only parses cards + a compact deck/preview index (~1.55 MB total),
+    // instead of parsing the entire words + sentence database.
+    const [cardsObj,startupObj] = await Promise.all([
+      fetchJSON(DATA_PATHS.cards), fetchJSON(DATA_PATHS.startup)
     ]);
     CARDS = cardsObj.cards;
+    STARTUP = startupObj;
     CARD_MAP = new Map(CARDS.map(c=>[c.card_id,c]));
     CHAR_MAP = new Map();
     for(const c of CARDS){if(!CHAR_MAP.has(c.char))CHAR_MAP.set(c.char,[]);CHAR_MAP.get(c.char).push(c)}
-    WORDS = new Map(wordsObj.words.map(w=>[w.word_id,w]));
-    CARD_WORDS = cardWordsObj.cards;
-    SENTENCES = new Map(sentencesObj.sentences.map(s=>[s.word_id,s]));
 
     progress = loadJSON(STORE_KEY,{});
     settings = {...{size:10,deck:"auto",sentenceJyutpingDefault:false},...loadJSON(SETTINGS_KEY,{})};
@@ -52,7 +65,7 @@ async function init(){
     $("multiCount").textContent = new Set(CARDS.filter(c=>c.reading_count>1).map(c=>c.char)).size.toLocaleString();
     refreshVoices();
     if("speechSynthesis" in window) window.speechSynthesis.addEventListener?.("voiceschanged",refreshVoices);
-    initPWA();
+    initPWA(); // intentionally not awaited: offline preparation never blocks the UI.
     $("loadingScreen").classList.add("is-hidden");
     $("appShell").classList.remove("is-hidden");
   }catch(err){
@@ -79,23 +92,32 @@ function migrateProgressV03(){
   if(changed){saveJSON(STORE_KEY,progress);settings.progressIdMigrated=true;saveJSON(SETTINGS_KEY,settings)}
 }
 
-function cardMetrics(c){
-  const ids=(CARD_WORDS[c.card_id]?.phrase_word_ids)||[];
-  const ws=ids.map(id=>WORDS.get(id)).filter(Boolean);
-  return {
-    core:ws.some(w=>w.core),
-    maxFreq:Math.max(0,...ws.map(w=>Number(w.frequency)||0)),
-    maxRank:Math.max(0,...ws.map(w=>Number(w.rank_score)||0)),
-    examples:ids.length
-  };
+function exampleShardNumber(cardId){
+  let h=2166136261;
+  for(let i=0;i<cardId.length;i++){h^=cardId.charCodeAt(i);h=Math.imul(h,16777619)>>>0}
+  return h%EXAMPLE_SHARD_COUNT;
 }
-function buildDecks(){
-  const scored=CARDS.map(c=>({c,m:cardMetrics(c)}));
-  const scoreSort=(a,b)=>(Number(b.m.core)-Number(a.m.core))||(b.m.maxFreq-a.m.maxFreq)||(b.m.maxRank-a.m.maxRank)||a.c.char.localeCompare(b.c.char,"zh-Hant");
-  const starter=[...scored].sort(scoreSort).filter(x=>x.m.examples>0).slice(0,170).map(x=>x.c);
-  const core=scored.filter(x=>x.m.core||x.m.maxFreq>=1000).sort(scoreSort).map(x=>x.c);
-  const practical=scored.filter(x=>x.m.core||x.m.maxFreq>=45).sort(scoreSort).map(x=>x.c);
-  DECKS={starter,core,practical,all:CARDS};
+async function loadExampleShard(cardId){
+  const n=exampleShardNumber(cardId);
+  if(EXAMPLE_SHARDS.has(n))return EXAMPLE_SHARDS.get(n);
+  if(EXAMPLE_PROMISES.has(n))return EXAMPLE_PROMISES.get(n);
+  const promise=fetchJSON(DATA_PATHS.exampleShard(n)).then(obj=>{
+    const cards=obj.cards||{};EXAMPLE_SHARDS.set(n,cards);EXAMPLE_PROMISES.delete(n);return cards;
+  }).catch(err=>{EXAMPLE_PROMISES.delete(n);throw err});
+  EXAMPLE_PROMISES.set(n,promise);return promise;
+}
+async function getExamples(card){
+  const shard=await loadExampleShard(card.card_id);
+  return shard[card.card_id]||[];
+}
+function getExamplesSync(card){
+  const shard=EXAMPLE_SHARDS.get(exampleShardNumber(card.card_id));
+  return shard?.[card.card_id]||null;
+}
+async function ensureSearchIndex(){
+  if(SEARCH_INDEX)return SEARCH_INDEX;
+  if(!searchIndexPromise)searchIndexPromise=fetchJSON(DATA_PATHS.search).then(obj=>SEARCH_INDEX=obj.cards||{}).finally(()=>searchIndexPromise=null);
+  return searchIndexPromise;
 }
 
 function pOf(id){return progress[id]||{level:0,reps:0,lapses:0,interval:0,due:0,last:0,note:""}}
@@ -185,18 +207,24 @@ function renderCard(){
 }
 function revealCurrent(){if(!current)return;revealed=true;$("answer").classList.add("show");$("rating").classList.add("show");$("revealBtn").classList.add("is-hidden");$("prompt").classList.add("is-hidden");renderExamples(current)}
 
-function getExamples(card){
-  const ids=CARD_WORDS[card.card_id]?.word_ids||[];
-  return ids.map(id=>WORDS.get(id)).filter(Boolean).map(w=>({word:w,sentence:SENTENCES.get(w.word_id)}));
-}
 function primarySpeechText(){
   if(!current)return "";
-  const first=getExamples(current).find(x=>x?.word?.word)?.word?.word;
+  const first=STARTUP.previews?.[current.card_id]?.[0];
   if(first)return first;
   return current.reading_count===1?current.char:"";
 }
-function renderExamples(card){
-  const items=getExamples(card);$("exampleCount").textContent=items.length?`${items.length} 個`:"";
+async function renderExamples(card){
+  const targetId=card.card_id;
+  $("exampleCount").textContent="";
+  $("wordCards").innerHTML='<div class="fallback-copy">正在載入例詞與語境…</div>';
+  let items=[];
+  try{items=await getExamples(card)}catch(err){
+    console.warn("Example shard load failed",err);
+    if(current?.card_id===targetId&&revealed)$("wordCards").innerHTML='<div class="fallback-copy">例詞資料暫時無法載入；字音、字表提示與評級仍可正常使用。</div>';
+    return;
+  }
+  if(current?.card_id!==targetId||!revealed)return;
+  $("exampleCount").textContent=items.length?`${items.length} 個`:"";
   if(!items.length){$("wordCards").innerHTML='<div class="fallback-copy">這個讀音目前沒有安全例詞，可先記住字音與字表提示。</div>';return}
   $("wordCards").innerHTML=items.map(({word:w,sentence:s},i)=>{
     const fallback=w.entry_type==="single_char";const recognition=!!s?.needs_review||s?.mode==="recognition";const pill=fallback?"字音提示":recognition?"識別語境":"用法例句";
@@ -218,12 +246,12 @@ function rate(r){
   progress[current.card_id]=p;saveProgress();if(r===0&&cursor+3<session.length&&!session.slice(cursor+1).some(c=>c.card_id===current.card_id))session.splice(Math.min(cursor+4,session.length),0,current);cursor++;renderCard();
 }
 
-function searchableText(c){const ex=(CARD_WORDS[c.card_id]?.word_ids||[]).map(id=>WORDS.get(id)?.word||"").join(" ");return `${c.char} ${(c.variants||[]).join(" ")} ${c.jyutping} ${c.hint||""} ${ex}`.toLowerCase()}
-function listHTML(items,mode){if(!items.length)return'<div class="empty-list">這裡暫時還沒有卡片。</div>';return items.map(c=>{const p=pOf(c.card_id),[lab,cls]=fmtLevel(p),right=mode==="mistakes"?`${p.lapses||0} 次`:`<span class="level-tag ${cls}">${lab}</span>`;const first=(CARD_WORDS[c.card_id]?.phrase_word_ids||[]).map(id=>WORDS.get(id)?.word).filter(Boolean).slice(0,2).join(" · ");return `<div class="list-row" data-id="${esc(c.card_id)}"><span class="list-char">${esc(c.char)}</span><span class="list-jy">${esc(c.jyutping)}</span><span class="list-note">${esc(c.hint||first||"—")}</span><span>${right}</span></div>`}).join("")}
+function searchableText(c){const ex=SEARCH_INDEX?.[c.card_id]||"";return `${c.char} ${(c.variants||[]).join(" ")} ${c.jyutping} ${c.hint||""} ${ex}`.toLowerCase()}
+function listHTML(items,mode){if(!items.length)return'<div class="empty-list">這裡暫時還沒有卡片。</div>';return items.map(c=>{const p=pOf(c.card_id),[lab,cls]=fmtLevel(p),right=mode==="mistakes"?`${p.lapses||0} 次`:`<span class="level-tag ${cls}">${lab}</span>`;const first=(STARTUP.previews?.[c.card_id]||[]).slice(0,2).join(" · ");return `<div class="list-row" data-id="${esc(c.card_id)}"><span class="list-char">${esc(c.char)}</span><span class="list-jy">${esc(c.jyutping)}</span><span class="list-note">${esc(c.hint||first||"—")}</span><span>${right}</span></div>`}).join("")}
 function bindRows(root){root.querySelectorAll(".list-row").forEach(row=>row.onclick=()=>{const c=CARD_MAP.get(row.dataset.id);if(!c)return;session=[c];cursor=0;$("sessionLabel").textContent="單卡複習";showView("study");renderCard()})}
-function renderKnown(){const q=$("knownFilter").value.trim().toLowerCase();let a=CARDS.filter(c=>pOf(c.card_id).level>=3);if(q)a=a.filter(c=>searchableText(c).includes(q));a.sort((x,y)=>pOf(y.card_id).level-pOf(x.card_id).level||pOf(y.card_id).last-pOf(x.card_id).last);$("knownList").innerHTML=listHTML(a.slice(0,500),"known");bindRows($("knownList"))}
-function renderMistakes(){const q=$("mistakeFilter").value.trim().toLowerCase();let a=CARDS.filter(c=>pOf(c.card_id).lapses>0);if(q)a=a.filter(c=>searchableText(c).includes(q));a.sort((x,y)=>pOf(y.card_id).lapses-pOf(x.card_id).lapses||pOf(y.card_id).last-pOf(x.card_id).last);$("mistakeList").innerHTML=listHTML(a.slice(0,500),"mistakes");bindRows($("mistakeList"))}
-function doSearch(){const q=$("searchInput").value.trim().toLowerCase(),lim=Number($("searchLimit").value),el=$("searchList");if(!q){el.innerHTML='<div class="empty-list">輸入內容開始查字。</div>';return}const exact=[],other=[];for(const c of CARDS){const hay=searchableText(c);if(c.char===q||c.jyutping.toLowerCase()===q)exact.push(c);else if(hay.includes(q))other.push(c)}const a=[...exact,...other].slice(0,lim);el.innerHTML=listHTML(a,"search");bindRows(el)}
+async function renderKnown(){const q=$("knownFilter").value.trim().toLowerCase();if(q){try{await ensureSearchIndex()}catch{}}let a=CARDS.filter(c=>pOf(c.card_id).level>=3);if(q)a=a.filter(c=>searchableText(c).includes(q));a.sort((x,y)=>pOf(y.card_id).level-pOf(x.card_id).level||pOf(y.card_id).last-pOf(x.card_id).last);$("knownList").innerHTML=listHTML(a.slice(0,500),"known");bindRows($("knownList"))}
+async function renderMistakes(){const q=$("mistakeFilter").value.trim().toLowerCase();if(q){try{await ensureSearchIndex()}catch{}}let a=CARDS.filter(c=>pOf(c.card_id).lapses>0);if(q)a=a.filter(c=>searchableText(c).includes(q));a.sort((x,y)=>pOf(y.card_id).lapses-pOf(x.card_id).lapses||pOf(y.card_id).last-pOf(x.card_id).last);$("mistakeList").innerHTML=listHTML(a.slice(0,500),"mistakes");bindRows($("mistakeList"))}
+async function doSearch(){const seq=++searchRequestSeq,q=$("searchInput").value.trim().toLowerCase(),lim=Number($("searchLimit").value),el=$("searchList");if(!q){el.innerHTML='<div class="empty-list">輸入內容開始查字。</div>';return}if(!SEARCH_INDEX){el.innerHTML='<div class="empty-list">正在載入例詞搜尋索引…</div>';try{await ensureSearchIndex()}catch{if(seq===searchRequestSeq)el.innerHTML='<div class="empty-list">例詞索引暫時無法載入；仍可按漢字與粵拼搜尋。</div>'}if(seq!==searchRequestSeq)return}const exact=[],other=[];for(const c of CARDS){const hay=searchableText(c);if(c.char===q||c.jyutping.toLowerCase()===q)exact.push(c);else if(hay.includes(q))other.push(c)}const a=[...exact,...other].slice(0,lim);el.innerHTML=listHTML(a,"search");bindRows(el)}
 
 function openNote(id){noteEditingId=id;const c=CARD_MAP.get(id),p=pOf(id);$("noteTitle").textContent=`${c.char} ${c.jyutping} · 我的語境`;$("noteText").value=p.note||"";$("noteModal").classList.add("show");$("noteModal").setAttribute("aria-hidden","false");setTimeout(()=>$("noteText").focus(),60)}
 function closeNote(){$("noteModal").classList.remove("show");$("noteModal").setAttribute("aria-hidden","true");noteEditingId=null}
@@ -267,7 +295,7 @@ async function initPWA(){
   if(!("serviceWorker" in navigator)||(!window.isSecureContext&&!isLocalhost()))return;
   try{
     navigator.serviceWorker.addEventListener("controllerchange",()=>{if(reloadingForUpdate)return;reloadingForUpdate=true;location.reload()});
-    swRegistration=await navigator.serviceWorker.register("./sw.js?v=04pwa3",{scope:"./",updateViaCache:"none"});
+    swRegistration=await navigator.serviceWorker.register(`./sw.js?v=${RELEASE}`,{scope:"./",updateViaCache:"none"});
     await navigator.serviceWorker.ready;
     updatePWAStatus();
     if(swRegistration.waiting)showPWAUpdate();
