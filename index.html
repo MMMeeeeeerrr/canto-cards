@@ -1,1 +1,219 @@
-<!doctype html><html lang="zh-Hant-HK"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f47f97"><link rel="manifest" href="manifest.webmanifest"><title>CantoCards</title><style>html,body{margin:0;min-height:100%;background:#fff8f3;color:#25302f;font-family:system-ui,-apple-system,"PingFang HK",sans-serif}.load{min-height:100vh;display:grid;place-items:center;text-align:center;padding:24px}.mark{width:72px;height:72px;border-radius:23px;margin:0 auto 18px;background:linear-gradient(145deg,#ff9b86,#f47f97 52%,#7bc9bb);color:#fff;display:grid;place-items:center;font:800 34px system-ui;box-shadow:0 15px 35px rgba(218,111,123,.2)}small{color:#7a8582}</style></head><body><div class="load"><div><div class="mark">C</div><h2>CantoCards</h2><small>正在载入字音、词汇和语境…</small></div></div><script>(async()=>{try{let html=await (await fetch('./CantoCards_v0.3.html')).text();html=html.replace('<title>粵字 CantoCards v0.3</title>','<title>CantoCards v0.4</title>').replace('<meta name="apple-mobile-web-app-title" content="粵字">','<meta name="apple-mobile-web-app-title" content="CantoCards">').replace('</body>','<script src="./v04.js"><\/script></body>');document.open();document.write(html);document.close()}catch(e){document.body.innerHTML='<div class="load"><div><div class="mark">C</div><h2>载入失败</h2><small>请联网刷新一次；成功载入后即可离线使用。</small></div></div>'}})();</script></body></html>
+<!doctype html>
+<html lang="zh-Hant-HK">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#2f8f83">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="CantoCards">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="application-name" content="CantoCards">
+  <meta name="description" content="離線粵語漢字讀音學習器：漢字、粵拼、例詞與語境複習。">
+  <title>CantoCards</title>
+  <link rel="manifest" href="./manifest.webmanifest?v=04pwa1">
+  <link rel="apple-touch-icon" href="./icon-180.png?v=04pwa1">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png?v=04pwa1">
+  <link rel="stylesheet" href="./styles.css?v=04pwa1">
+</head>
+<body>
+  <div id="loadingScreen" class="loading-screen">
+    <div class="loading-mark"><span>C</span></div>
+    <strong>正在載入 CantoCards</strong>
+    <p id="loadingText">準備字音與例句資料…</p>
+  </div>
+
+  <div id="appShell" class="shell is-hidden">
+    <header class="topbar">
+      <button class="brand" data-go="home" aria-label="返回首頁">
+        <span class="brand-mark"><i></i><b>C</b></span>
+        <span class="brand-copy"><strong>CantoCards</strong><small>漢字 → 粵語讀音 → 語境</small></span>
+      </button>
+      <div class="top-actions">
+        <button class="ghost-btn" id="quickRandom">隨機 10 張</button>
+        <button class="icon-btn" data-go="settings" title="設定" aria-label="設定">⚙︎</button>
+      </div>
+    </header>
+
+    <nav class="nav" aria-label="主要導覽">
+      <button class="active" data-view="home"><span>⌂</span><em>首頁</em></button>
+      <button data-view="study"><span>◇</span><em>學習</em></button>
+      <button data-view="known"><span>✓</span><em>熟字本</em></button>
+      <button data-view="mistakes"><span>↺</span><em>易錯本</em></button>
+      <button data-view="search"><span>⌕</span><em>查字</em></button>
+      <button data-view="settings"><span>⚙</span><em>設定</em></button>
+    </nav>
+
+    <main>
+      <section id="home" class="view active">
+        <div class="hero">
+          <div class="panel welcome">
+            <div class="eyebrow">ACTIVE RECALL · JYUTPING</div>
+            <h1>先在腦中讀出來，<br>再翻開答案。</h1>
+            <p>按常用程度逐步擴展字音；到期複習優先。多音字按「字＋指定讀音＋義項」分開練習。</p>
+            <div class="quickrow">
+              <button class="primary-btn" id="startToday">開始今日學習</button>
+              <button class="soft-btn" id="startRandom">當前層級隨機</button>
+              <label class="select-wrap"><span>每組</span><select id="groupSize"><option value="10">10 張</option><option value="20">20 張</option><option value="30">30 張</option><option value="50">50 張</option></select></label>
+              <label class="select-wrap"><span>字池</span><select id="deckMode"><option value="auto">自動漸進</option><option value="starter">起步高頻</option><option value="core">日常核心</option><option value="practical">實用常用</option><option value="all">完整字表</option></select></label>
+            </div>
+          </div>
+          <aside class="panel today-panel">
+            <div class="today-kicker">TODAY</div>
+            <div class="today-num" id="dueCount">0</div>
+            <div class="today-label">張到期複習</div>
+            <button class="line-btn" id="startMistakes">複習最近易錯</button>
+          </aside>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card"><b id="learnedCount">0</b><span>已見過讀音</span></div>
+          <div class="stat-card"><b id="knownCount">0</b><span>會 / 很熟</span></div>
+          <div class="stat-card"><b id="mistakeCount">0</b><span>曾經答錯</span></div>
+          <div class="stat-card"><b id="multiCount">0</b><span>多讀音漢字</span></div>
+        </div>
+
+        <div class="panel progress-panel">
+          <div class="progress-head">
+            <div><strong id="deckTitle">當前學習層級</strong><small id="deckHint"></small></div>
+            <span id="progressText">0 / 0</span>
+          </div>
+          <div class="progress-track"><i id="progressBar"></i></div>
+        </div>
+        <p class="source-note"><strong>資料說明</strong>：字音與字表提示主要參考香港教育署《常用字廣州話讀音表》；例詞與粵拼主要參考 Words.hk。語境句用於學習輔助，部分長尾詞以識別語境呈現。</p>
+      </section>
+
+      <section id="study" class="view">
+        <div class="study-head"><span id="sessionLabel">尚未開始</span><strong id="sessionProgress">0 / 0</strong></div>
+        <article class="panel study-card">
+          <div class="session-empty" id="sessionEmpty">
+            <div class="empty-orb">C</div>
+            <h2>開始一組練習</h2>
+            <p>看到漢字後先自己回想讀音，再顯示粵拼。</p>
+            <button class="primary-btn" id="emptyStart">隨機 10 張</button>
+          </div>
+
+          <div id="cardContent" class="card-content is-hidden">
+            <div class="card-badges">
+              <span class="badge badge-state" id="statusBadge">新字</span>
+              <span class="badge badge-multi is-hidden" id="multiBadge"></span>
+            </div>
+
+            <div class="character-zone">
+              <div class="big-char" id="bigChar">中</div>
+              <div class="variant" id="variantText"></div>
+              <p class="prompt" id="prompt">先自己想一想：這個字在這個義項下怎麼讀？</p>
+
+              <div class="answer" id="answer">
+                <div class="jyutping-main" id="jyutping">zung1</div>
+                <div class="sound-row"><button class="sound-btn speech-action is-hidden" id="speakBtn">🔊 聽讀音</button></div>
+                <div class="breakdown">
+                  <span id="initialPart">聲母 z</span><span id="finalPart">韻母 ung</span><span id="tonePart">聲調 1</span>
+                </div>
+
+                <div class="context-box is-hidden" id="contextBox">
+                  <small>字表提示</small><strong id="contextText"></strong>
+                </div>
+
+                <section class="examples-box">
+                  <div class="examples-head"><div><small>WORDS IN CONTEXT</small><h3>例詞與語境</h3></div><span id="exampleCount"></span></div>
+                  <div id="wordCards" class="word-grid"></div>
+                </section>
+
+                <details class="other-readings is-hidden" id="otherReadings">
+                  <summary>查看這個字的其他建議讀音</summary>
+                  <div class="other-list" id="otherList"></div>
+                </details>
+
+                <div class="personal-note is-hidden" id="personalNoteBox"><small>我的語境</small><strong id="personalNoteText"></strong></div>
+                <button class="note-link" id="openNote">＋ 添加 / 修改我的詞組與例句</button>
+              </div>
+            </div>
+
+            <div class="reveal-row"><button class="reveal-btn" id="revealBtn">顯示粵拼</button></div>
+            <div class="rating" id="rating">
+              <button class="rate r0" data-rating="0"><b>不會</b><small>很快再來</small></button>
+              <button class="rate r1" data-rating="1"><b>模糊</b><small>明天複習</small></button>
+              <button class="rate r2" data-rating="2"><b>會</b><small>逐漸拉長</small></button>
+              <button class="rate r3" data-rating="3"><b>很熟</b><small>長期保留</small></button>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section id="known" class="view">
+        <div class="section-title"><div><div class="eyebrow">MASTERED</div><h2>熟字本</h2><p>目前評為「會」或「很熟」的字音。</p></div></div>
+        <div class="toolbar"><input id="knownFilter" class="field grow" placeholder="篩選漢字 / 粵拼 / 語境…"></div>
+        <div class="panel list-panel"><div id="knownList"></div></div>
+      </section>
+
+      <section id="mistakes" class="view">
+        <div class="section-title"><div><div class="eyebrow">RETRY</div><h2>易錯本</h2><p>曾被評為「不會」的字音會保留在這裡。</p></div><button class="primary-btn" id="studyMistakesPage">複習這些字</button></div>
+        <div class="toolbar"><input id="mistakeFilter" class="field grow" placeholder="篩選漢字 / 粵拼 / 語境…"></div>
+        <div class="panel list-panel"><div id="mistakeList"></div></div>
+      </section>
+
+      <section id="search" class="view">
+        <div class="section-title"><div><div class="eyebrow">LOOK UP</div><h2>查字</h2><p>可按漢字、粵拼、義項或例詞搜尋。</p></div></div>
+        <div class="toolbar">
+          <input id="searchInput" class="field grow" placeholder="例如：行 / hong4 / 銀行">
+          <select id="searchLimit" class="field"><option value="30">30 項</option><option value="60">60 項</option><option value="120">120 項</option></select>
+        </div>
+        <div class="panel list-panel"><div id="searchList"><div class="empty-list">輸入內容開始查字。</div></div></div>
+      </section>
+
+      <section id="settings" class="view">
+        <div class="section-title"><div><div class="eyebrow">PREFERENCES</div><h2>設定</h2><p>調整學習節奏、粵拼顯示與本機資料。</p></div></div>
+        <div class="settings-grid">
+          <div class="panel setting-card">
+            <h3>學習</h3>
+            <label>預設每組張數<select id="defaultSize" class="field"><option value="10">10 張</option><option value="20">20 張</option><option value="30">30 張</option><option value="50">50 張</option></select></label>
+            <label>預設字池<select id="defaultDeck" class="field"><option value="auto">自動漸進</option><option value="starter">起步高頻</option><option value="core">日常核心</option><option value="practical">實用常用</option><option value="all">完整字表</option></select></label>
+            <label class="toggle-row"><span><b>例句粵拼預設展開</b><small>關閉時可逐句點擊查看。</small></span><input type="checkbox" id="sentenceJyutpingDefault"></label>
+          </div>
+
+          <div class="panel setting-card">
+            <h3>粵語發音</h3>
+            <div class="voice-status"><span id="voiceDot"></span><div><b id="voiceTitle">正在檢測…</b><small id="voiceDetail">只使用設備提供的粵語語音，不回退到普通話。</small></div></div>
+            <button class="line-btn" id="refreshVoices">重新檢測語音</button>
+          </div>
+
+          <div class="panel setting-card">
+            <h3>安裝與離線</h3>
+            <div class="voice-status"><span id="pwaDot"></span><div><b id="pwaTitle">正在檢測…</b><small id="pwaDetail">網站版可直接使用；安裝與離線功能需要支援 PWA 的安全連線。</small></div></div>
+            <div class="setting-actions"><button class="line-btn is-hidden" id="installAppBtn">安裝到裝置</button><button class="line-btn" id="checkUpdateBtn">檢查更新</button><button class="primary-btn is-hidden" id="applyUpdateBtn">重新載入更新</button></div>
+          </div>
+
+          <div class="panel setting-card">
+            <h3>學習資料</h3>
+            <p>進度儲存在目前瀏覽器。匯出 JSON 可用於備份或換設備。</p>
+            <div class="setting-actions"><button class="line-btn" id="exportBtn">匯出進度</button><label class="line-btn file-btn">匯入進度<input type="file" id="importInput" accept="application/json,.json"></label></div>
+          </div>
+
+          <div class="panel setting-card danger-card">
+            <h3>清空記錄</h3>
+            <p>刪除目前瀏覽器內的全部評級、複習日期與個人語境。</p>
+            <button class="danger-btn" id="resetBtn">清空全部學習記錄</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="updateBanner" class="update-banner is-hidden" role="status">
+    <span>有更新可用。</span><button id="updateBannerBtn">重新載入</button>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <div id="noteModal" class="modal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-head"><div><small>PERSONAL CONTEXT</small><h3 id="noteTitle">我的語境</h3></div><button class="icon-btn" id="closeNote" aria-label="關閉">×</button></div>
+      <textarea id="noteText" rows="5" placeholder="例如：同事常講的詞組、自己想記住的例句…"></textarea>
+      <div class="modal-actions"><button class="soft-btn" id="cancelNote">取消</button><button class="primary-btn" id="saveNote">保存</button></div>
+    </div>
+  </div>
+
+  <script src="./app.js?v=04pwa1" defer></script>
+</body>
+</html>
