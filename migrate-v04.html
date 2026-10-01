@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-Hant-HK">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2f8f83">
+<title>CantoCards · Chrome 遷移修復</title>
+<style>
+  :root{font-family:system-ui,-apple-system,"Noto Sans TC","PingFang TC",sans-serif;color:#24312f;background:#fbf7ef}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px}
+  main{width:min(560px,100%);background:#fff;border:1px solid #e7e0d6;border-radius:24px;padding:26px;box-shadow:0 16px 44px rgba(45,65,60,.09)}
+  .mark{width:54px;height:54px;border-radius:18px;background:#e7f2ee;display:grid;place-items:center;font-weight:800;font-size:26px;color:#2f8f83}
+  h1{font-size:24px;margin:18px 0 8px}
+  p{line-height:1.65;color:#5d6865}
+  .box{background:#f8f4ec;border-radius:16px;padding:14px 16px;margin:18px 0;font-size:14px}
+  .ok{color:#26756b;font-weight:700}
+  .warn{color:#8a6540}
+  button{width:100%;border:0;border-radius:14px;padding:14px 18px;font:inherit;font-weight:750;cursor:pointer}
+  #run{background:#2f8f83;color:white}
+  #backup{background:#eef5f2;color:#286f66;margin-top:10px}
+  button:disabled{opacity:.55;cursor:default}
+  #status{min-height:44px;margin-top:16px;font-size:14px;white-space:pre-line}
+  small{display:block;margin-top:14px;color:#87908d;line-height:1.5}
+</style>
+</head>
+<body>
+<main>
+  <div class="mark">C</div>
+  <h1>Chrome 遷移修復</h1>
+  <p>這個頁面只處理 CantoCards 的舊 Service Worker 與離線快取，<strong>不會刪除 localStorage 裡的學習進度與設定</strong>。</p>
+
+  <div class="box">
+    <div id="progressCheck">正在檢查本機學習記錄…</div>
+    <div class="warn">將移除：CantoCards Service Worker + cantocards-* Cache Storage</div>
+    <div class="ok">將保留：學習進度、評級、備註與設定</div>
+  </div>
+
+  <button id="run">開始修復並進入 v0.4</button>
+  <button id="backup">先下載一份本機進度備份</button>
+  <div id="status"></div>
+  <small>修復完成後會自動前往 CantoCards 04pwa3。若頁面沒有自動跳轉，可重新打開正式網址。</small>
+</main>
+
+<script>
+(() => {
+  const PROGRESS_KEY = "cantoCards.progress.v1";
+  const SETTINGS_KEY = "cantoCards.settings.v1";
+  const $ = id => document.getElementById(id);
+  const p = localStorage.getItem(PROGRESS_KEY);
+  const s = localStorage.getItem(SETTINGS_KEY);
+
+  let cardCount = 0;
+  try { cardCount = p ? Object.keys(JSON.parse(p)).length : 0; } catch {}
+  $("progressCheck").textContent = p
+    ? `已偵測到本機學習記錄：${cardCount} 個卡片項目。`
+    : "目前未偵測到學習進度；仍可執行快取修復。";
+
+  $("backup").onclick = () => {
+    const payload = {
+      app: "CantoCards",
+      rescueBackup: true,
+      exportedAt: new Date().toISOString(),
+      progress: (() => { try { return p ? JSON.parse(p) : {}; } catch { return {}; } })(),
+      settings: (() => { try { return s ? JSON.parse(s) : {}; } catch { return {}; } })()
+    };
+    const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `CantoCards-rescue-backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+
+  $("run").onclick = async () => {
+    const btn = $("run");
+    btn.disabled = true;
+    $("backup").disabled = true;
+    const status = $("status");
+
+    try {
+      const base = new URL("./", location.href).href;
+
+      status.textContent = "1/3 正在註銷舊 Service Worker…";
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        const ours = regs.filter(r => r.scope.startsWith(base));
+        await Promise.all(ours.map(r => r.unregister()));
+      }
+
+      status.textContent = "2/3 正在清除 CantoCards 舊快取…";
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(
+          keys.filter(k => k.startsWith("cantocards-")).map(k => caches.delete(k))
+        );
+      }
+
+      status.textContent = "3/3 完成。正在重新載入 v0.4…";
+      await new Promise(r => setTimeout(r, 700));
+      location.replace(`./index.html?v=04pwa3&fresh=${Date.now()}`);
+    } catch (err) {
+      console.error(err);
+      status.textContent = "修復沒有完成：" + (err?.message || String(err)) +
+        "\n請不要清除網站資料；可以重新載入此頁再試一次。";
+      btn.disabled = false;
+      $("backup").disabled = false;
+    }
+  };
+})();
+</script>
+</body>
+</html>

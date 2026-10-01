@@ -1,10 +1,10 @@
 "use strict";
 
 const DATA_PATHS = {
-  cards: "./data/cards.json?v=04pwa2",
-  words: "./data/words.json?v=04pwa2",
-  cardWords: "./data/card_words.json?v=04pwa2",
-  sentences: "./data/sentences.json?v=04pwa2"
+  cards: "./data/cards.json?v=04pwa3",
+  words: "./data/words.json?v=04pwa3",
+  cardWords: "./data/card_words.json?v=04pwa3",
+  sentences: "./data/sentences.json?v=04pwa3"
 };
 const STORE_KEY = "cantoCards.progress.v1";
 const SETTINGS_KEY = "cantoCards.settings.v1";
@@ -267,7 +267,7 @@ async function initPWA(){
   if(!("serviceWorker" in navigator)||(!window.isSecureContext&&!isLocalhost()))return;
   try{
     navigator.serviceWorker.addEventListener("controllerchange",()=>{if(reloadingForUpdate)return;reloadingForUpdate=true;location.reload()});
-    swRegistration=await navigator.serviceWorker.register("./sw.js",{scope:"./",updateViaCache:"none"});
+    swRegistration=await navigator.serviceWorker.register("./sw.js?v=04pwa3",{scope:"./",updateViaCache:"none"});
     await navigator.serviceWorker.ready;
     updatePWAStatus();
     if(swRegistration.waiting)showPWAUpdate();
