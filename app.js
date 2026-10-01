@@ -1,10 +1,10 @@
 "use strict";
 
 const DATA_PATHS = {
-  cards: "./data/cards.json?v=04pwa1",
-  words: "./data/words.json?v=04pwa1",
-  cardWords: "./data/card_words.json?v=04pwa1",
-  sentences: "./data/sentences.json?v=04pwa1"
+  cards: "./data/cards.json?v=04pwa2",
+  words: "./data/words.json?v=04pwa2",
+  cardWords: "./data/card_words.json?v=04pwa2",
+  sentences: "./data/sentences.json?v=04pwa2"
 };
 const STORE_KEY = "cantoCards.progress.v1";
 const SETTINGS_KEY = "cantoCards.settings.v1";

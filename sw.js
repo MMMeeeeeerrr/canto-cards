@@ -1,7 +1,7 @@
 "use strict";
 
 const CACHE_VERSION = "cantocards-v04-pwa1";
-const RELEASE = "04pwa1";
+const RELEASE = "04pwa2";
 const APP_ASSETS = [
   `./index.html?v=${RELEASE}`,
   `./styles.css?v=${RELEASE}`,
@@ -20,8 +20,6 @@ const INDEX_URL = abs(`./index.html?v=${RELEASE}`);
 
 self.addEventListener("install", event => {
   event.waitUntil((async()=>{
-    const oldKeys = await caches.keys();
-    const firstV04Install = !oldKeys.some(k=>k.startsWith("cantocards-v04"));
     const cache = await caches.open(CACHE_VERSION);
     for(const url of APP_ASSETS){
       const req = new Request(abs(url),{cache:"reload"});
@@ -29,7 +27,8 @@ self.addEventListener("install", event => {
       if(!res.ok) throw new Error(`Failed to cache ${url}: ${res.status}`);
       await cache.put(req,res);
     }
-    if(firstV04Install) await self.skipWaiting();
+    // v0.4 migration hotfix: take control immediately after a complete cache install.
+    await self.skipWaiting();
   })());
 });
 
@@ -55,8 +54,10 @@ async function cacheFirst(request){
 
 async function networkFirstNavigation(request){
   try{
-    const response = await fetch(request);
-    return response;
+    // Do not let a stale browser HTTP cache resurrect the v0.3 HTML shell.
+    const response = await fetch(request,{cache:"no-store"});
+    if(response.ok) return response;
+    throw new Error(`Navigation HTTP ${response.status}`);
   }catch{
     return await caches.match(INDEX_URL);
   }
